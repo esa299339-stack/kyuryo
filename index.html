@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#d9467a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="給料計算">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>給料計算</title>
+<style>
+:root{--bg:#fff7fa;--card:#fff;--text:#2b2b2b;--sub:#888;--main:#d9467a;--line:#eedde4;--work:#ffe3ee}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1719;--card:#262124;--text:#eee;--sub:#999;--main:#ff6f9f;--line:#3a3135;--work:#4a2a37}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
+header h1{font-size:20px;margin:0}
+button{font:inherit;border:none;border-radius:10px;padding:10px 14px;background:var(--main);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--main);border:1px solid var(--main)}
+button.danger{background:#c0392b}
+.icon{background:transparent;color:var(--text);font-size:22px;padding:6px 12px}
+.total{margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px;text-align:center;box-shadow:0 1px 4px #0001}
+.total .big{font-size:28px;font-weight:700;color:var(--main)}
+.total .s{font-size:12px;color:var(--sub)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 8px}
+.dow{text-align:center;font-size:12px;color:var(--sub);padding:4px 0}
+.day{background:var(--card);border-radius:8px;min-height:64px;padding:4px;font-size:12px;display:flex;flex-direction:column;cursor:pointer;border:2px solid transparent}
+.day.empty{background:transparent;cursor:default}
+.day.work{background:var(--work)}
+.day.today{border-color:var(--main)}
+.day .n{font-weight:600}
+.day .t{font-size:9px;color:var(--sub)}
+.day .m{margin-top:auto;font-size:10px;font-weight:700;color:var(--main);word-break:break-all}
+.sun{color:#d33}.sat{color:#36c}
+.modal{position:fixed;inset:0;background:#0006;display:none;align-items:flex-end;justify-content:center;z-index:10}
+.modal.open{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.sheet h2{margin:0 0 12px;font-size:18px;display:flex;justify-content:space-between;align-items:center}
+.card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:10px}
+label{display:block;font-size:12px;color:var(--sub);margin:6px 0 2px}
+input,textarea,select{width:100%;font-size:16px;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text)}
+textarea{min-height:56px;resize:vertical}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.job-h{display:flex;justify-content:space-between;align-items:center;font-weight:600}
+.back{color:var(--main);font-weight:700}
+.btns{display:flex;gap:8px;margin-top:10px}.btns>*{flex:1}
+.sum{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+.sum.b{font-size:18px;font-weight:700;color:var(--main);border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+.hint{font-size:11px;color:var(--sub)}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.chk{display:flex;align-items:center;gap:4px;margin:0;padding:6px 10px;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--text);font-size:13px}
+.chk input{width:auto;margin:0}
+.tbl-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.tbl-row input{flex:1}.tbl-row button{padding:6px 10px}
+</style>
+</head>
+<body>
+<header>
+  <button class="icon" id="prev">‹</button>
+  <h1 id="ym"></h1>
+  <button class="icon" id="next">›</button>
+  <button class="icon" id="setBtn">⚙</button>
+</header>
+<div class="total">
+  <div class="s">今月の合計バック</div>
+  <div class="big" id="mTotal">¥0</div>
+  <div class="s" id="mSub"></div>
+</div>
+<div class="cal" id="cal"></div>
+
+<div class="modal" id="dayModal"><div class="sheet" id="daySheet"></div></div>
+<div class="modal" id="setModal"><div class="sheet" id="setSheet"></div></div>
+
+<script>
+const KEY='kyuryo-data-v1', SKEY='kyuryo-settings-v1';
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch{return d}};
+let data=load(KEY,{});
+let settings=load(SKEY,{nomRate:100,table:[],options:[]});
+settings.options=settings.options||[];
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(data));localStorage.setItem(SKEY,JSON.stringify(settings))};
+const yen=n=>'¥'+Math.round(n||0).toLocaleString();
+const num=v=>Number(v)||0;
+let cur=new Date();cur.setDate(1);
+const key=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+// バック計算
+const optBack=j=>(j.opts||[]).reduce((s,n)=>{const o=settings.options.find(o=>o.name===n);return s+(o?num(o.back):0)},0);
+function jobBack(j){
+  const t=settings.table.find(r=>num(r.min)===num(j.min));
+  return (t?num(t.back):0)+num(j.nom)*settings.nomRate/100+optBack(j)+num(j.other)+num(j.tip);
+}
+const dayTotal=d=>(d?.jobs||[]).reduce((s,j)=>s+jobBack(j),0);
+
+function render(){
+  const y=cur.getFullYear(),m=cur.getMonth();
+  document.getElementById('ym').textContent=`${y}年${m+1}月`;
+  const cal=document.getElementById('cal');cal.innerHTML='';
+  ['日','月','火','水','木','金','土'].forEach((w,i)=>cal.innerHTML+=`<div class="dow ${i==0?'sun':i==6?'sat':''}">${w}</div>`);
+  const first=new Date(y,m,1).getDay(),last=new Date(y,m+1,0).getDate();
+  for(let i=0;i<first;i++)cal.innerHTML+='<div class="day empty"></div>';
+  let total=0,days=0,jobs=0,mins=0;const today=key(new Date());
+  for(let d=1;d<=last;d++){
+    const k=key(new Date(y,m,d)),e=data[k],t=dayTotal(e),w=(first+d-1)%7;
+    if(e&&(e.work||e.jobs?.length)){days++;}
+    total+=t;jobs+=e?.jobs?.length||0;mins+=(e?.jobs||[]).reduce((s,j)=>s+num(j.min),0);
+    const div=document.createElement('div');
+    div.className='day'+(e?.work?' work':'')+(k===today?' today':'');
+    div.innerHTML=`<span class="n ${w==0?'sun':w==6?'sat':''}">${d}</span>`+
+      (e?.work&&e.start?`<span class="t">${e.start}-${e.end||''}</span>`:'')+
+      (t?`<span class="m">${yen(t)}</span>`:'');
+    div.onclick=()=>openDay(k);cal.appendChild(div);
+  }
+  document.getElementById('mTotal').textContent=yen(total);
+  document.getElementById('mSub').textContent=`出勤 ${days}日 ／ ${jobs}本 ／ ${mins}分`;
+}
+
+function openDay(k){
+  const e=data[k]||{work:false,start:'',end:'',jobs:[]};
+  const draw=()=>{
+    const [y,m,d]=k.split('-');
+    let h=`<h2>${+m}月${+d}日<button class="icon" onclick="closeM('dayModal')">✕</button></h2>
+    <div class="card">
+      <label><input type="checkbox" id="w" style="width:auto" ${e.work?'checked':''}> 出勤日</label>
+      <div class="row"><div><label>出勤</label><input type="time" id="st" value="${e.start||''}"></div>
+      <div><label>退勤</label><input type="time" id="en" value="${e.end||''}"></div></div>
+    </div>`;
+    e.jobs.forEach((j,i)=>{
+      h+=`<div class="card"><div class="job-h">仕事 ${i+1}<span class="back">バック ${yen(jobBack(j))}</span></div>
+      <div class="row"><div><label>コース</label><select data-i="${i}" data-f="min"><option value="">選択</option>${settings.table.map(r=>`<option value="${r.min}" ${num(r.min)===num(j.min)?'selected':''}>${r.min}分（${yen(r.back)}）</option>`).join('')}</select></div>
+      <div><label>受け取った金額</label><input type="number" inputmode="numeric" data-i="${i}" data-f="amount" value="${j.amount??''}"></div></div>
+      <div class="row"><div><label>指名料</label><input type="number" inputmode="numeric" data-i="${i}" data-f="nom" value="${j.nom??''}"></div>
+      <div><label>チップ</label><input type="number" inputmode="numeric" data-i="${i}" data-f="tip" value="${j.tip??''}"></div></div>
+      <label>オプション</label><div class="opts">${settings.options.length?settings.options.map(o=>`<label class="chk"><input type="checkbox" data-oi="${i}" value="${o.name.replace(/"/g,'&quot;')}" ${(j.opts||[]).includes(o.name)?'checked':''}>${o.name.replace(/</g,'&lt;')}（${yen(o.back)}）</label>`).join(''):'<span class="hint">⚙ でオプションを登録すると選べます</span>'}</div>
+      <label>その他オプション（金額を自由入力）</label><input type="number" inputmode="numeric" placeholder="登録していないオプションの金額" data-i="${i}" data-f="other" value="${j.other??''}">
+      <label>メモ</label><textarea data-i="${i}" data-f="memo">${(j.memo||'').replace(/</g,'&lt;')}</textarea>
+      <div class="btns"><button class="ghost" onclick="delJob(${i})">この仕事を削除</button></div></div>`;
+    });
+    const sumF=f=>e.jobs.reduce((s,j)=>s+num(j[f]),0);
+    h+=`<button style="width:100%" onclick="addJob()">＋ 仕事を追加</button>
+    <div class="card" style="margin-top:10px">
+      <div class="sum"><span>本数 / 分数</span><span>${e.jobs.length}本 / ${sumF('min')}分</span></div>
+      <div class="sum"><span>受け取った金額 計</span><span>${yen(sumF('amount')+sumF('nom')+sumF('other')+sumF('tip'))}</span></div>
+      <div class="sum"><span>チップ・その他 計</span><span>${yen(sumF('other')+sumF('tip'))}</span></div>
+      <div class="sum b"><span>この日のバック合計</span><span id="dt">${yen(dayTotal(e))}</span></div>
+    </div>`;
+    const sh=document.getElementById('daySheet');sh.innerHTML=h;
+    sh.querySelector('#w').onchange=ev=>{e.work=ev.target.checked;commit()};
+    sh.querySelector('#st').onchange=ev=>{e.start=ev.target.value;if(e.start)e.work=true;commit();draw()};
+    sh.querySelector('#en').onchange=ev=>{e.end=ev.target.value;commit()};
+    sh.querySelectorAll('[data-f]').forEach(inp=>inp[inp.tagName==='SELECT'?'onchange':'oninput']=()=>{
+      const j=e.jobs[inp.dataset.i],f=inp.dataset.f;
+      j[f]=f==='memo'?inp.value:(inp.value===''?'':num(inp.value));
+      commit();
+      inp.closest('.card').querySelector('.back').textContent='バック '+yen(jobBack(j));
+      sh.querySelector('#dt').textContent=yen(dayTotal(e));
+    });
+    sh.querySelectorAll('[data-oi]').forEach(c=>c.onchange=()=>{
+      const j=e.jobs[c.dataset.oi];j.opts=j.opts||[];
+      if(c.checked)j.opts.push(c.value);else j.opts=j.opts.filter(n=>n!==c.value);
+      commit();draw();
+    });
+    sh.querySelectorAll('input[data-f]').forEach(inp=>inp.onchange=()=>draw());
+  };
+  const commit=()=>{
+    if(!e.work&&!e.jobs.length&&!e.start)delete data[k];else data[k]=e;
+    save();render();
+  };
+  window.addJob=()=>{e.jobs.push({min:'',amount:'',nom:'',opts:[],other:'',tip:'',memo:''});e.work=true;commit();draw();
+    const s=document.getElementById('daySheet');s.scrollTop=s.scrollHeight};
+  window.delJob=i=>{if(confirm('この仕事を削除しますか？')){e.jobs.splice(i,1);commit();draw()}};
+  draw();document.getElementById('dayModal').classList.add('open');
+}
+
+function openSettings(){
+  const draw=()=>{
+    let h=`<h2>バック設定<button class="icon" onclick="closeM('setModal')">✕</button></h2>
+    <div class="card">
+      <div><label>コースごとのバック額（◯分 → ◯円）</label>
+        ${settings.table.map((r,i)=>`<div class="tbl-row"><input type="number" data-t="${i}" data-k="min" value="${r.min}">分<input type="number" data-t="${i}" data-k="back" value="${r.back}">円<button class="ghost" onclick="delRow(${i})">✕</button></div>`).join('')}
+        <button class="ghost" onclick="addRow()">＋ 行を追加</button>
+        <div class="hint">ここで登録したコースが、仕事の入力時に選べます</div>
+      </div>
+      <label>指名料バック率（%）</label><input type="number" id="nomRate" value="${settings.nomRate}">
+    </div>
+    <div class="card"><label>オプションごとのバック額</label>
+        ${settings.options.map((o,i)=>`<div class="tbl-row"><input data-o="${i}" data-k="name" placeholder="オプション名" value="${o.name.replace(/"/g,'&quot;')}"><input type="number" data-o="${i}" data-k="back" value="${o.back}">円<button class="ghost" onclick="delOpt(${i})">✕</button></div>`).join('')}
+        <button class="ghost" onclick="addOpt()">＋ オプションを追加</button>
+        <div class="hint">記録するときに選択式で選べます</div>
+      <div class="hint">その他オプションとチップは入力額がそのままバックに加算されます</div>
+    </div>
+    <div class="card"><label>データのバックアップ</label>
+      <div class="btns"><button class="ghost" id="exp">書き出し</button><button class="ghost" id="imp">読み込み</button></div>
+      <input type="file" id="file" accept=".json" style="display:none"></div>`;
+    const sh=document.getElementById('setSheet');sh.innerHTML=h;
+    ['nomRate'].forEach(id=>sh.querySelector('#'+id).oninput=ev=>{settings[id]=num(ev.target.value);upd()});
+    sh.querySelectorAll('[data-o]').forEach(inp=>inp.oninput=()=>{const o=settings.options[inp.dataset.o],k=inp.dataset.k;o[k]=k==='name'?inp.value:num(inp.value);upd()});
+    sh.querySelectorAll('[data-t]').forEach(inp=>inp[inp.tagName==='SELECT'?'onchange':'oninput']=()=>{settings.table[inp.dataset.t][inp.dataset.k]=num(inp.value);upd()});
+    sh.querySelector('#exp').onclick=()=>{
+      const b=new Blob([JSON.stringify({data,settings})],{type:'application/json'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`kyuryo-${key(new Date())}.json`;a.click();
+    };
+    const f=sh.querySelector('#file');sh.querySelector('#imp').onclick=()=>f.click();
+    f.onchange=async()=>{try{const o=JSON.parse(await f.files[0].text());
+      if(confirm('今のデータを上書きしますか？')){data=o.data||{};settings=o.settings||settings;upd();draw()}}catch{alert('読み込めませんでした')}};
+  };
+  const upd=()=>{save();render()};
+  window.addOpt=()=>{settings.options.push({name:'',back:''});upd();draw()};
+  window.delOpt=i=>{settings.options.splice(i,1);upd();draw()};
+  window.addRow=()=>{settings.table.push({min:'',back:''});upd();draw()};
+  window.delRow=i=>{settings.table.splice(i,1);upd();draw()};
+  draw();document.getElementById('setModal').classList.add('open');
+}
+
+window.closeM=id=>document.getElementById(id).classList.remove('open');
+document.querySelectorAll('.modal').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.remove('open')});
+document.getElementById('prev').onclick=()=>{cur.setMonth(cur.getMonth()-1);render()};
+document.getElementById('next').onclick=()=>{cur.setMonth(cur.getMonth()+1);render()};
+document.getElementById('setBtn').onclick=openSettings;
+render();
+if(!settings.table.length){openSettings();addRow()}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>

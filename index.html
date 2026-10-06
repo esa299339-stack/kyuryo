@@ -34,7 +34,7 @@ button.danger{background:#c0392b}
 .day.today{border-color:var(--main)}
 .day .n{font-weight:600}
 .day .t{font-size:9px;color:var(--sub)}
-.day .m{margin-top:auto;font-size:10px;font-weight:700;color:var(--main);word-break:break-all}
+.day .m{margin-top:auto;font-size:11px;font-weight:700;color:#fff;background:var(--main);border-radius:4px;padding:1px 2px;text-align:center;letter-spacing:-.3px;white-space:nowrap;overflow:hidden}
 .sun{color:#d33}.sat{color:#36c}
 .modal{position:fixed;inset:0;background:#0006;display:none;align-items:flex-end;justify-content:center;z-index:10}
 .modal.open{display:flex}
@@ -111,7 +111,7 @@ function render(){
     div.className='day'+(e?.work?' work':'')+(k===today?' today':'');
     div.innerHTML=`<span class="n ${w==0?'sun':w==6?'sat':''}">${d}</span>`+
       (e?.work&&e.start?`<span class="t">${e.start}-${e.end||''}</span>`:'')+
-      (t?`<span class="m">${yen(t)}</span>`:'');
+      (t?`<span class="m">${Math.round(t).toLocaleString()}</span>`:'');
     div.onclick=()=>openDay(k);cal.appendChild(div);
   }
   document.getElementById('mTotal').textContent=yen(total);
